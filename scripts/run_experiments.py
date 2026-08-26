@@ -24,12 +24,7 @@ from Modelisation.Baselines.TCCM.model import TCCM
 from Modelisation.Baselines.CVDD.model import CVDD
 from Modelisation.Baselines.FATE.model import FATE
 from Modelisation.Baselines.DATE.model import DATE
-
-from Modelisation.flocat.flocat import (
-    flocat,
-    flocatTrainer,
-)
-
+from Modelisation.Flocat.flocat import flocat, flocatTrainer
 import Modelisation.Evaluation.evaluation as ev
 
 # TODO
@@ -158,21 +153,9 @@ def parse_args():
     # --------------------------------------------------------
 
     parser.add_argument(
-        "--ocsvm",
-        action="store_true",
-        help="Run OCSVM.",
-    )
-
-    parser.add_argument(
         "--rsrae",
         action="store_true",
         help="Run RSRAE.",
-    )
-
-    parser.add_argument(
-        "--ae",
-        action="store_true",
-        help="Run AutoEncoder.",
     )
 
     parser.add_argument(
@@ -200,9 +183,9 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--fm_trans",
+        "--flocat",
         action="store_true",
-        help="Run Flow Matching Transformer.",
+        help="Run FLOCAT.",
     )
 
     return parser.parse_args()
@@ -230,24 +213,8 @@ def initialize_results(args):
 
     results = {}
 
-    if args.ocsvm:
-        results["ocsvm"] = {
-            "auc": [],
-            "fpr": [],
-            "ap": [],
-            "time": [],
-        }
-
     if args.rsrae:
         results["rsrae"] = {
-            "auc": [],
-            "fpr": [],
-            "ap": [],
-            "time": [],
-        }
-
-    if args.ae:
-        results["ae"] = {
             "auc": [],
             "fpr": [],
             "ap": [],
@@ -286,8 +253,8 @@ def initialize_results(args):
             "time": [],
         }
 
-    if args.fm_trans:
-        results["fm_trans"] = {
+    if args.flocat:
+        results["flocat"] = {
             "auc": [],
             "fpr": [],
             "ap": [],
@@ -321,57 +288,6 @@ def prepare_test_data(
     )
 
     return data_test, y_test
-
-
-# ============================================================
-# OCSVM
-# ============================================================
-
-def run_ocsvm(
-    X_inlier,
-    X_anomaly,
-    X_test,
-    y_test,
-    device,
-):
-
-    logger.info("Running OCSVM...")
-
-    ocsvm_args = {
-        "nu": 0.1,
-        "kernel": "rbf",
-        "gamma": "scale",
-    }
-
-    model = OCSVM(ocsvm_args)
-
-    start = time.time()
-
-    X_train = torch.concatenate(
-        [
-            X_inlier.mean(dim=1),
-            X_anomaly.mean(dim=1),
-        ]
-    ).cpu()
-
-    model.train(X_train)
-
-    train_time = time.time() - start
-
-    auc, fpr95, ap = model.test(
-        X_test.mean(dim=1).cpu(),
-        y_test,
-    )
-
-    logger.info(
-        f"OCSVM --> "
-        f"AUC: {auc:.4f} | "
-        f"FPR@95: {fpr95:.4f} | "
-        f"AP: {ap:.4f}"
-    )
-
-    return auc, fpr95, ap, train_time
-
 
 # ============================================================
 # RSRAE
@@ -441,62 +357,6 @@ def run_rsrae(
 
     return auc, fpr95, ap, train_time
 
-
-# ============================================================
-# AutoEncoder
-# ============================================================
-
-def run_ae(
-    X_inlier,
-    X_anomaly,
-    X_test,
-    y_test,
-):
-
-    logger.info("Running AE...")
-
-    ae_args = {
-        "contamination": 0.1,
-        "hidden_neuron_list": [64, 32, 16],
-        "hidden_activation_name": "relu",
-        "epoch_num": 30,
-        "batch_size": X_inlier.shape[0] // 5,
-        "dropout_rate": 0.0,
-        "verbose": 0,
-    }
-
-    model = AE(ae_args)
-
-    start = time.time()
-
-    X_train = torch.concatenate(
-        [
-            X_inlier,
-            X_anomaly,
-        ]
-    )
-
-    model.train(
-        X_train.cpu()
-    )
-
-    train_time = time.time() - start
-
-    auc, fpr95, ap = model.test(
-        X_test,
-        y_test,
-    )
-
-    logger.info(
-        f"AE --> "
-        f"AUC: {auc:.4f} | "
-        f"FPR@95: {fpr95:.4f} | "
-        f"AP: {ap:.4f}"
-    )
-
-    return auc, fpr95, ap, train_time
-
-
 # ============================================================
 # TCCM
 # ============================================================
@@ -515,7 +375,7 @@ def run_tccm(
         "n_features": X_inlier.shape[1],
         "epochs": 50,
         "learning_rate": 1e-3,
-        "batch_size": 32,
+        "batch_size": 256,
         "device": device,
     }
 
