@@ -12,30 +12,25 @@ from datasets import concatenate_datasets
 # Dataset preparation
 # ============================================================
 
-# TODO: adapter l'import au nom réel de ton premier script
-from run_dataset_create import get_datasets
+from Data.run_dataset_create import get_datasets
 
 
 # ============================================================
 # Models
 # ============================================================
 
-# TODO: compléter / adapter les imports selon ton projet
-
-from Modelisation.Baselines.OCSVM.ocsvm import OCSVM
 from Modelisation.Baselines.RSRAE.model import RSRAE
-from Modelisation.Baselines.AE.autoencoder import AE
 from Modelisation.Baselines.TCCM.model import TCCM
-from Modelisation.Baselines.CVDD.networks.model_bert import CVDDModel
-from Modelisation.Baselines.FATE.fate import FATEModel
-from Modelisation.Baselines.DATE.date import DATEModel
+from Modelisation.Baselines.CVDD.model import CVDD
+from Modelisation.Baselines.FATE.model import FATE
+from Modelisation.Baselines.DATE.model import DATE
 
-from Modelisation.FlowMatching.flow_matching_transformers_toksen import (
-    FlowDiTTokSen,
-    FlowMatchingTransformersTokSen,
+from Modelisation.flocat.flocat import (
+    flocat,
+    flocatTrainer,
 )
 
-import Modelisation.evaluation as ev
+import Modelisation.Evaluation.evaluation as ev
 
 # TODO
 # from utils import save_results

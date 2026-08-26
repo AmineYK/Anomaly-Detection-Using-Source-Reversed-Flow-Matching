@@ -222,7 +222,7 @@ class CVDDDataset(Dataset):
         }
 
 
-class CVDDModel(BaselineModel):
+class CVDD(BaselineModel):
 
     def __init__(self, args):
         self.bert_name = args["bert_name"]

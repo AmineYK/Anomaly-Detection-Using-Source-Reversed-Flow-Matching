@@ -447,7 +447,7 @@ class FATETrainer:
         return auc, fpr95, ap
 
 
-class FATEModel(BaselineModel):
+class FATE(BaselineModel):
 
     def __init__(self, args):
         self.model_name = args["model_name"]

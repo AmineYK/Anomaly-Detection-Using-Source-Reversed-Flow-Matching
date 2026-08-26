@@ -17,6 +17,7 @@ from Modelisation.Baselines.DATE.utils import (
     apply_mask_safe,
     corrupt_input_random,
     date_anomaly_score,
+    generate_mask_patterns
 )
 from Modelisation.Baselines.baseline import BaselineModel
 
@@ -154,7 +155,7 @@ class DATEDataset(Dataset):
         )
 
 
-class DATEModel(BaselineModel):
+class DATE(BaselineModel):
 
     def __init__(self, args):
         self.which_config = args["which_config"]

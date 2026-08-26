@@ -6,7 +6,7 @@ from torch.optim import AdamW
 import numpy as np
 import time
 from torch.utils.data import TensorDataset, DataLoader
-import Modelisation.evaluation as ev
+import Modelisation.Evaluation.evaluation as ev
 
 
 class TimestepEmbedder(nn.Module):
@@ -110,7 +110,7 @@ def modulate(x, shift, scale):
     else:
         return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
-class FlowDiTTokSen(nn.Module):
+class flocat(nn.Module):
     def __init__(
         self,
         latent_dim=768,       
@@ -219,7 +219,7 @@ class FlowDiTTokSen(nn.Module):
         return v_sentence, v_tokens, None
 
 
-class FlowMatchingTransformersTokSen(nn.Module):
+class flocatTrainer(nn.Module):
 
     def __init__(self, model, config):
         super().__init__()
