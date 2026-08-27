@@ -3,6 +3,10 @@ from torch.utils.data import DataLoader
 import re
 import string
 import unicodedata
+import os
+import torch
+from datasets import Dataset, Features, Value
+from tqdm import tqdm
 
 # NLP Dataset Cleaning
 #--------------------
@@ -76,6 +80,100 @@ def preprocess(dataset, column='text'):
 
 
 
+@torch.no_grad()
+def encode_tokens(
+    model,
+    tokenizer,
+    texts,
+    device,
+    batch_size=32,
+    max_length=256,
+    return_attentions=False,
+    use_fp16=False,
+    save_to_disk=None,
+    model_type="encoder",  # "encoder" | "decoder"
+):
+    # ─── Adaptation decoder-only ───────────────────────────
+    if model_type == "decoder":
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            model.config.pad_token_id = tokenizer.eos_token_id
+        tokenizer.padding_side = "left"
+    else:
+        tokenizer.padding_side = "right"
+
+    # ─── fp16 ───────────────────────────────────────────────
+    if use_fp16:
+        model = model.half()
+
+    # ─── Special token ids ──────────────────────────────────
+    special_ids = set(tokenizer.all_special_ids)
+
+    def get_real_tokens_mask(input_ids, attention_mask):
+        pad_mask = attention_mask.bool()
+        special_mask = torch.ones_like(input_ids, dtype=torch.bool)
+        for special_id in special_ids:
+            special_mask &= (input_ids != special_id)
+        return (pad_mask & special_mask).long()   # (B, T)
+
+    all_embeddings = []
+    all_tokens = []
+    all_real_masks = []
+    all_attentions = [] if return_attentions else None
+
+    for i in tqdm(range(0, len(texts), batch_size)):
+        batch = texts[i:i + batch_size]
+
+        inputs = tokenizer(
+            batch,
+            padding="max_length",
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt"
+        ).to(device)
+
+        outputs = model(**inputs, output_attentions=return_attentions)
+
+        last_hidden_state = outputs.last_hidden_state  # (B, T, D)
+
+        emb = torch.nn.functional.normalize(last_hidden_state, p=2, dim=2)
+        all_embeddings.append(emb.cpu())
+
+        # ✅ masque vrais tokens uniquement
+        real_mask = get_real_tokens_mask(inputs["input_ids"], inputs["attention_mask"])
+        all_real_masks.append(real_mask.cpu())
+
+        tokens = [
+            tokenizer.convert_ids_to_tokens(ids.tolist())
+            for ids in inputs["input_ids"]
+        ]
+        all_tokens.extend(tokens)
+
+        if return_attentions:
+            batch_attn = torch.stack(outputs.attentions, dim=1)  # (B, L, H, T, T)
+            batch_attn = batch_attn.mean(dim=(1, 2)).cpu()        # (B, T, T)
+            all_attentions.append(batch_attn)
+
+        del outputs, inputs
+
+    embeddings = torch.cat(all_embeddings, dim=0)
+    real_masks = torch.cat(all_real_masks, dim=0)
+
+    if save_to_disk:
+        torch.save({
+            "embeddings": embeddings,
+            "tokens": all_tokens,
+            "real_masks": real_masks,
+        }, save_to_disk)
+        print(f"✅ Sauvegardé dans {save_to_disk}")
+
+    if return_attentions:
+        attentions = torch.cat(all_attentions, dim=0)
+        return embeddings, all_tokens, attentions, real_masks
+    else:
+        return embeddings, all_tokens, real_masks
+
+
 # Dataset Importing
 #--------------------
 
@@ -103,7 +201,7 @@ def import_dataset(name="20newsgroups", full_dataset_=False, batch_size=64):
   # *****************************
     if name == "reuters":
 
-        dataset = load_dataset('ucirvine/reuters21578', 'ModApte', trust_remote_code=True)  #ModHayes  ModLewis
+        dataset = load_dataset('ucirvine/reuters21578', 'ModApte')  #ModHayes  ModLewis
 
         train_dataloader = DataLoader(dataset['train'], batch_size=batch_size, shuffle=True)
         test_dataloader = DataLoader(dataset['test'], batch_size=batch_size, shuffle=True)

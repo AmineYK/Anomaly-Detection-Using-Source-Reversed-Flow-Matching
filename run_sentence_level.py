@@ -17,16 +17,12 @@ import torch.nn as nn
 from datasets import concatenate_datasets
 
 import data_loading as dl
-import embedding_encoder
+import Data.embedding_encoder as embedding_encoder
 from Modelisation.Baselines.RSRAE.model import RSRAE
 from Modelisation.Baselines.TCCM.model import TCCM
-from Modelisation.Baselines.FATE.fate import FATEModel
-from Modelisation.Baselines.LLM.llm_based import LLMAnomalyDetector
-from Modelisation.FlowMatching.flow_matching_transformers_toksen import (
-    FlowDiTTokSen,
-    FlowMatchingTransformersTokSen,
-)
-from utils import save_results, save_hyperparameters
+from Modelisation.Flocat.flocat import flocat, flocatTrainer
+from Modelisation.Baselines.FATE.model import FATE
+from Modelisation.Baselines.LLM.model import LLMAnomalyDetector
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,6 +41,7 @@ def parse_args():
 
     parser.add_argument("--type_tac", type=str, default="pantin", choices=["ruff", "pantin", "fate"])
     parser.add_argument("--nu", type=float, default=0.0)
+    parser.add_argument("--nu_contamination", type=float, default=0.0)
     parser.add_argument("--nb_runs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--device", type=str, default=None)
@@ -55,7 +52,7 @@ def parse_args():
 
     parser.add_argument("--llm_name", type=str, default="")
 
-    parser.add_argument("--fm_trans", action="store_true")
+    parser.add_argument("--flocat", action="store_true")
     parser.add_argument("--rsrae", action="store_true")
     parser.add_argument("--tccm", action="store_true")
     parser.add_argument("--fate", action="store_true")
@@ -87,7 +84,7 @@ def main(args):
 
         metrics = {
             name: {"auc": [], "fpr": [], "ap": [], "time": []}
-            for name in ("fm_trans", "rsrae", "tccm", "fate", "llm")
+            for name in ("flocat", "rsrae", "tccm", "fate", "llm")
             if getattr(args, name)
         }
 
@@ -107,7 +104,7 @@ def main(args):
         train_anomaly_fate = None
         if args.fate:
             _, train_anomaly_fate = dl.apply_tac(
-                train_dataset, args.dataset_name, inlier_topic, "fate", args.nu,
+                train_dataset, args.dataset_name, inlier_topic, "fate", args.nu_contamination,
             )
 
         for n_run in range(1, args.nb_runs + 1):
@@ -138,7 +135,7 @@ def main(args):
                 }
                 model = RSRAE(rsrae_args)
                 t0 = time.time()
-                src = torch.cat([X_inlier, X_anom_for_train]) if args.nu > 0 else X_inlier
+                src = torch.cat([X_inlier, X_anom_for_train]) if args.nu_contamination > 0 else X_inlier
                 model.train(src, device)
                 t1 = time.time()
                 auc, fpr, ap = model.test(X_test, y_test)
@@ -154,7 +151,7 @@ def main(args):
                 }
                 model = TCCM(tccm_args)
                 t0 = time.time()
-                src = torch.cat([X_inlier, X_anom_for_train]) if args.nu > 0 else X_inlier
+                src = torch.cat([X_inlier, X_anom_for_train]) if args.nu_contamination > 0 else X_inlier
                 model.train(src)
                 t1 = time.time()
                 auc, fpr, ap = model.test(X_test, y_test)
@@ -178,7 +175,7 @@ def main(args):
                     "test_inlier_text": test_inlier[text_column],
                     "test_anomaly_text": test_anomaly[text_column],
                 }
-                model = FATEModel(fate_args)
+                model = FATE(fate_args)
                 t0 = time.time()
                 model.train()
                 t1 = time.time()
@@ -207,50 +204,29 @@ def main(args):
                     metrics["llm"][k].append(v)
 
             # ---------------- FLOCAT (Flow Matching Transformers) ----------------
-            if args.fm_trans:
-                fm_trans_config = {
+            if args.flocat:
+                flocat_config = {
                     "latent_dim": X_inlier.shape[1], "hidden_dim": 128, "depth": 8, "n_heads": 8,
-                    "freq_embed_size": 128, "lr": 1e-3, "weight_decay": 1e-5, "lambda_svdd": 0,
+                    "freq_embed_size": 128, "lr": 1e-3, "weight_decay": 1e-5, "lambda_love": 0,
                     "epochs": 300, "lr_epochs": 120, "batch_size": args.batch_size,
                     "coef_var": 0.4, "target": "gaussian-neigh", "source": X_inlier,
                     "attentions_mask": None, "device": device,
                 }
-                flow_model = FlowDiTTokSen(
-                    latent_dim=fm_trans_config["latent_dim"],
-                    hidden_dim=fm_trans_config["hidden_dim"],
-                    depth=fm_trans_config["depth"],
-                    n_heads=fm_trans_config["n_heads"],
+                flow_model = flocat(
+                    latent_dim=flocat_config["latent_dim"],
+                    hidden_dim=flocat_config["hidden_dim"],
+                    depth=flocat_config["depth"],
+                    n_heads=flocat_config["n_heads"],
                 ).to(device)
-                fm_transformer = FlowMatchingTransformersTokSen(flow_model, fm_trans_config)
+                flocatformer = flocatTrainer(flow_model, flocat_config)
 
                 t0 = time.time()
-                fm_transformer.train(True)
+                flocatformer.train(True)
                 t1 = time.time()
-                auc, fpr, ap = fm_transformer.test(X_test, y_test, type="norm-centroid", n_steps=10)
+                auc, fpr, ap = flocatformer.test(X_test, y_test, type="norm-centroid", n_steps=10)
                 print(f"FLOCAT --> AUC: {auc:.4f} | FPR@95: {fpr:.4f} | AP: {ap:.4f}\n")
                 for k, v in zip(("auc", "fpr", "ap", "time"), (auc, fpr, ap, t1 - t0)):
-                    metrics["fm_trans"][k].append(v)
-
-        # ---------------- Sauvegarde des résultats moyens ----------------
-        model_names = {
-            "fm_trans": "flocat_wo_love",
-            "rsrae": "RSRAE",
-            "tccm": "TCCM",
-            "fate": "FATE",
-            "llm": f"llm_based_{args.llm_name}",
-        }
-        for key, ad_model in model_names.items():
-            if key in metrics:
-                m = metrics[key]
-                save_results(
-                    dataset_name=args.dataset_name, inlier_topic=inlier_topic,
-                    type_emb=args.encoder_type, ad_model=ad_model,
-                    auc_mean=np.mean(m["auc"]), ap_mean=np.mean(m["ap"]), fpr_mean=np.mean(m["fpr"]),
-                    auc_std=np.std(m["auc"]), ap_std=np.std(m["ap"]), fpr_std=np.std(m["fpr"]),
-                    train_time=np.mean(m["time"]), nu=args.nu,
-                    overwrite="smart" if key == "fm_trans" else "naive",
-                )
-
+                    metrics["flocat"][k].append(v)
 
 if __name__ == "__main__":
     main(parse_args())
@@ -263,4 +239,15 @@ if __name__ == "__main__":
 #     --model_name "all-mpnet-base-v2" \
 #     --embedding_name "mpnet_embedding" \
 #     --nb_runs 5 \
-#     --fm_trans --rsrae --tccm --fate --llm --llm_name "..."
+#     --flocat --rsrae --tccm --fate --llm --llm_name "..."
+
+
+# python3 run_sentence_level.py \
+#     --dataset_name "reuters" \
+#     --inlier_topic "acq" \
+#     --type_tac "ruff" \
+#     --nu 0.1 \
+#     --model_name "all-mpnet-base-v2" \
+#     --embedding_name "mpnet_embedding" \
+#     --nb_runs 2 \
+#     --tccm

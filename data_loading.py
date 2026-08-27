@@ -7,8 +7,8 @@ Ce module est importé par run_sentence_level.py et run_token_level.py.
 import logging
 import torch
 
-import utils
-import tac
+import Data.utils as utils
+import Data.tac as tac
 
 logger = logging.getLogger(__name__)
 

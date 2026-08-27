@@ -17,25 +17,19 @@ import torch.nn as nn
 from transformers import AutoTokenizer, AutoModel
 
 import data_loading as dl
-from Data_Preparation.utils import encode_tokens
+from Data.utils import encode_tokens
 from Modelisation.Baselines.RSRAE.model import RSRAE
 from Modelisation.Baselines.TCCM.model import TCCM
-from Modelisation.Baselines.CVDD.networks.model_bert import CVDDModel
-from Modelisation.Baselines.DATE.date import DATEModel
-from Modelisation.FlowMatching.flow_matching_transformers_toksen import (
-    FlowDiTTokSen,
-    FlowMatchingTransformersTokSen,
-)
-from utils import save_results
+from Modelisation.Baselines.CVDD.model import CVDD
+from Modelisation.Baselines.DATE.model import DATE
+from Modelisation.Flocat.flocat import flocat, flocatTrainer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN_MODEL_CONFIGS = {
     "roberta": {"model_name": "roberta-base", "model_type": "encoder"},
-    "modernbert": {"model_name": "answerdotai/ModernBERT-large", "model_type": "encoder"},
-    "qwen": {"model_name": "Qwen/Qwen2.5-0.5B", "model_type": "decoder"},
-    "mistral": {"model_name": "ministral/Ministral-3b-instruct", "model_type": "decoder"},
+    "qwen": {"model_name": "Qwen/Qwen2.5-0.5B", "model_type": "decoder"}
 }
 
 
@@ -52,6 +46,7 @@ def parse_args():
 
     parser.add_argument("--type_tac", type=str, default="pantin", choices=["ruff", "pantin", "fate"])
     parser.add_argument("--nu", type=float, default=0.0)
+    parser.add_argument("--nu_contamination", type=float, default=0.0)
     parser.add_argument("--nb_runs", type=int, default=5)
     parser.add_argument("--seq_len", type=int, default=128)
     parser.add_argument("--batch_size", type=int, default=128)
@@ -61,7 +56,7 @@ def parse_args():
         "--type_emb", type=str, default="roberta", choices=list(TOKEN_MODEL_CONFIGS.keys()),
     )
 
-    parser.add_argument("--fm_trans", action="store_true")
+    parser.add_argument("--flocat", action="store_true")
     parser.add_argument("--tccm", action="store_true")
     parser.add_argument("--rsrae", action="store_true")
     parser.add_argument("--date", action="store_true")
@@ -81,8 +76,8 @@ def main(args):
     cfg = TOKEN_MODEL_CONFIGS[args.type_emb]
     print(f"Loading token model : {cfg['model_name']} (type={cfg['model_type']})")
     tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"])
-    bert_model = AutoModel.from_pretrained(cfg["model_name"], torch_dtype=torch.float32).to(device)
-    bert_model.eval()
+    token_model = AutoModel.from_pretrained(cfg["model_name"], torch_dtype=torch.float32).to(device)
+    token_model.eval()
 
     train_dataset, test_dataset = dl.load_dataset(args.dataset_name, args.batch_size)
     train_dataset, test_dataset = dl.preprocess_dataset(args.dataset_name, train_dataset, test_dataset)
@@ -92,7 +87,7 @@ def main(args):
 
         metrics = {
             name: {"auc": [], "fpr": [], "ap": [], "time": []}
-            for name in ("fm_trans", "tccm", "rsrae", "date", "cvdd")
+            for name in ("flocat", "tccm", "rsrae", "date", "cvdd")
             if getattr(args, name)
         }
 
@@ -101,15 +96,15 @@ def main(args):
         )
 
         X_inlier, _, attentions_train_mask = encode_tokens(
-            bert_model, tokenizer, train_inlier[text_column], device,
+            token_model, tokenizer, train_inlier[text_column], device,
             batch_size=64, max_length=args.seq_len, model_type=cfg["model_type"],
         )
         print(X_inlier.shape)
 
         X_anom_for_train = None
-        if args.nu > 0:
+        if args.nu_contamination > 0:
             X_anom_for_train, _, _ = encode_tokens(
-                bert_model, tokenizer, train_anomaly[text_column], device,
+                token_model, tokenizer, train_anomaly[text_column], device,
                 batch_size=64, max_length=args.seq_len, model_type=cfg["model_type"],
             )
 
@@ -123,11 +118,11 @@ def main(args):
             _, y_test = dl.build_labeled_test_set(test_inlier, test_anomaly)
 
             X_test_inlier, _, mask_test_inlier = encode_tokens(
-                bert_model, tokenizer, test_inlier[text_column], device,
+                token_model, tokenizer, test_inlier[text_column], device,
                 batch_size=64, max_length=args.seq_len, model_type=cfg["model_type"],
             )
             X_test_anomaly, _, mask_test_anomaly = encode_tokens(
-                bert_model, tokenizer, test_anomaly[text_column], device,
+                token_model, tokenizer, test_anomaly[text_column], device,
                 batch_size=64, max_length=args.seq_len, model_type=cfg["model_type"],
             )
             X_test = torch.cat([X_test_inlier, X_test_anomaly])
@@ -146,7 +141,7 @@ def main(args):
                 }
                 model = RSRAE(rsrae_args)
                 t0 = time.time()
-                if args.nu > 0:
+                if args.nu_contamination > 0:
                     src = torch.cat([X_inlier.mean(dim=1), X_anom_for_train.mean(dim=1)])
                 else:
                     src = X_inlier.mean(dim=1)
@@ -165,7 +160,7 @@ def main(args):
                 }
                 model = TCCM(tccm_args)
                 t0 = time.time()
-                if args.nu > 0:
+                if args.nu_contamination > 0:
                     src = torch.cat([X_inlier, X_anom_for_train])
                 else:
                     src = X_inlier.mean(dim=1)
@@ -184,9 +179,9 @@ def main(args):
                     "lr": 1e-3, "weight_decay": 0, "lambda_p": 0.1,
                     "n_epochs": 20, "batch_size": 32, "device": device,
                 }
-                model = CVDDModel(cvdd_args)
+                model = CVDD(cvdd_args)
                 t0 = time.time()
-                if args.nu > 0:
+                if args.nu_contamination > 0:
                     from datasets import concatenate_datasets
                     model.train(concatenate_datasets([train_inlier, train_anomaly]))
                 else:
@@ -202,12 +197,12 @@ def main(args):
             if args.date:
                 date_args = {
                     "which_config": args.type_emb, "encoder_name": cfg["model_name"],
-                    "K": 20, "lr": 1e-3, "weight_decay": 1e-4, "seq_len": 256,
-                    "ratio": 0.50, "n_epochs": 30, "batch_size": 32, "device": device,
+                    "K": 20, "lr": 1e-3, "weight_decay": 1e-4, "seq_len": 64,
+                    "ratio": 0.50, "n_epochs": 5, "batch_size": 32, "device": device,
                 }
-                model = DATEModel(date_args)
+                model = DATE(date_args)
                 t0 = time.time()
-                if args.nu > 0:
+                if args.nu_contamination > 0:
                     from datasets import concatenate_datasets
                     model.train(concatenate_datasets([train_inlier, train_anomaly]))
                 else:
@@ -220,51 +215,31 @@ def main(args):
                     metrics["date"][k].append(v)
 
             # ---------------- FLOCAT ----------------
-            if args.fm_trans:
-                fm_trans_config = {
-                    "latent_dim": X_inlier.shape[-1], "hidden_dim": 128, "depth": 8, "n_heads": 8,
-                    "freq_embed_size": 128, "lr": 1e-3, "weight_decay": 1e-2, "lambda_svdd": 0,
-                    "epochs": 350, "lr_epochs": 150, "batch_size": args.batch_size,
+            if args.flocat:
+                flocat_config = {
+                    "latent_dim": X_inlier.shape[-1], "hidden_dim": 64, "depth": 4, "n_heads": 4,
+                    "freq_embed_size": 128, "lr": 1e-3, "weight_decay": 1e-2, "lambda_love": 1e-4,
+                    "epochs": 10, "lr_epochs": 3, "batch_size": args.batch_size,
                     "coef_var": 1.0, "target": "gaussian-neigh", "source": X_inlier,
                     "attentions_mask": attentions_train_mask, "device": device,
                 }
-                flow_model = FlowDiTTokSen(
-                    latent_dim=fm_trans_config["latent_dim"],
-                    hidden_dim=fm_trans_config["hidden_dim"],
-                    depth=fm_trans_config["depth"],
-                    n_heads=fm_trans_config["n_heads"],
+                flow_model = flocat(
+                    latent_dim=flocat_config["latent_dim"],
+                    hidden_dim=flocat_config["hidden_dim"],
+                    depth=flocat_config["depth"],
+                    n_heads=flocat_config["n_heads"],
                 ).to(device)
-                fm_transformer = FlowMatchingTransformersTokSen(flow_model, fm_trans_config)
+                flocatformer = flocatTrainer(flow_model, flocat_config)
 
                 t0 = time.time()
-                fm_transformer.train(True)
+                flocatformer.train(True)
                 t1 = time.time()
-                auc, fpr, ap = fm_transformer.test(
+                auc, fpr, ap = flocatformer.test(
                     X_test, y_test, attentions_test_mask, type="norm-centroid", n_steps=10,
                 )
                 print(f"FLOCAT --> AUC: {auc:.4f} | FPR@95: {fpr:.4f} | AP: {ap:.4f}\n")
                 for k, v in zip(("auc", "fpr", "ap", "time"), (auc, fpr, ap, t1 - t0)):
-                    metrics["fm_trans"][k].append(v)
-
-        # ---------------- Sauvegarde des résultats moyens ----------------
-        model_names = {
-            "fm_trans": "flocat_wo_love",
-            "tccm": "TCCM",
-            "rsrae": "RSRAE",
-            "date": "DATE",
-            "cvdd": "CVDD",
-        }
-        for key, ad_model in model_names.items():
-            if key in metrics:
-                m = metrics[key]
-                save_results(
-                    dataset_name=args.dataset_name, inlier_topic=inlier_topic,
-                    type_emb=args.type_emb, ad_model=ad_model,
-                    auc_mean=np.mean(m["auc"]), ap_mean=np.mean(m["ap"]), fpr_mean=np.mean(m["fpr"]),
-                    auc_std=np.std(m["auc"]), ap_std=np.std(m["ap"]), fpr_std=np.std(m["fpr"]),
-                    train_time=np.mean(m["time"]), nu=args.nu,
-                    overwrite="smart" if key == "fm_trans" else "naive",
-                )
+                    metrics["flocat"][k].append(v)
 
 
 if __name__ == "__main__":
@@ -278,4 +253,15 @@ if __name__ == "__main__":
 #     --type_emb "roberta" \
 #     --seq_len 128 \
 #     --nb_runs 5 \
-#     --fm_trans --tccm --rsrae --date --cvdd
+#     --flocat --tccm --rsrae --date --cvdd
+
+
+# python3 run_token_level.py \
+#     --dataset_name "reuters" \
+#     --inlier_topic "acq" \
+#     --type_tac "ruff" \
+#     --nu 0.1 \
+#     --type_emb "roberta" \
+#     --seq_len 64 \
+#     --nb_runs 2 \
+#     --tccm
