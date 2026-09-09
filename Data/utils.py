@@ -7,10 +7,10 @@ import os
 import torch
 from datasets import Dataset, Features, Value
 from tqdm import tqdm
+from datasets import ClassLabel
+import json
 
-# NLP Dataset Cleaning
-#--------------------
-
+# Dataset Cleaning
 def clean_corpus(
     corpus,
     lower=True,
@@ -36,7 +36,7 @@ def clean_corpus(
         
         cleaned_text = " ".join(tokens)
         
-        # delete empty docs
+        # Skip empty documents
         if cleaned_text.strip():
             cleaned_corpus.append(cleaned_text)
     
@@ -70,15 +70,13 @@ def preprocess(dataset, column='text'):
         example[column] = text
         return example
 
-    # Appliquer le nettoyage
+    # Apply text cleaning
     dataset = dataset.map(clean_text)
 
-    # Supprimer les textes vides
+    # Remove empty texts
     dataset = dataset.filter(lambda x: x[column] != "")
 
     return dataset
-
-
 
 @torch.no_grad()
 def encode_tokens(
@@ -93,7 +91,7 @@ def encode_tokens(
     save_to_disk=None,
     model_type="encoder",  # "encoder" | "decoder"
 ):
-    # ─── Adaptation decoder-only ───────────────────────────
+    # Decoder-only adaptation
     if model_type == "decoder":
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -102,11 +100,11 @@ def encode_tokens(
     else:
         tokenizer.padding_side = "right"
 
-    # ─── fp16 ───────────────────────────────────────────────
+    # fp16
     if use_fp16:
         model = model.half()
 
-    # ─── Special token ids ──────────────────────────────────
+    # Special token ids
     special_ids = set(tokenizer.all_special_ids)
 
     def get_real_tokens_mask(input_ids, attention_mask):
@@ -139,7 +137,7 @@ def encode_tokens(
         emb = torch.nn.functional.normalize(last_hidden_state, p=2, dim=2)
         all_embeddings.append(emb.cpu())
 
-        # ✅ masque vrais tokens uniquement
+        # Mask for real tokens only (excludes padding and special tokens)
         real_mask = get_real_tokens_mask(inputs["input_ids"], inputs["attention_mask"])
         all_real_masks.append(real_mask.cpu())
 
@@ -165,7 +163,7 @@ def encode_tokens(
             "tokens": all_tokens,
             "real_masks": real_masks,
         }, save_to_disk)
-        print(f"✅ Sauvegardé dans {save_to_disk}")
+        print(f"Sauvegardé dans {save_to_disk}")
 
     if return_attentions:
         attentions = torch.cat(all_attentions, dim=0)
@@ -185,7 +183,7 @@ def import_dataset(name="20newsgroups", full_dataset_=False, batch_size=64):
     if name == "20newsgroups":
         dataset = load_dataset("SetFit/20_newsgroups")
 
-        # Nettoyage des textes
+        # Clean the text fields
         dataset = dataset.map(lambda x: {"text": clean_corpus([x["text"]])[0] if clean_corpus([x["text"]]) else ""})
         dataset = dataset.filter(lambda x: len(x["text"]) > 0)
 
@@ -303,7 +301,7 @@ def import_dataset(name="20newsgroups", full_dataset_=False, batch_size=64):
         dataset = load_dataset("stanfordnlp/sst2")
 
         train_dataloader = DataLoader(dataset['train'], batch_size=batch_size, shuffle=True)
-        # because the testset is not labeled, the validation one is
+        # The test set is not labeled, so the validation set is used instead
         test_dataloader = DataLoader(dataset['validation'], batch_size=batch_size, shuffle=True)
         
         if full_dataset_:
@@ -357,7 +355,7 @@ def import_dataset(name="20newsgroups", full_dataset_=False, batch_size=64):
             samples = []
             domain = file_domain
 
-            # human
+            # Human-written sample
             if entry.get("human_text"):
                 samples.append({
                     "text": entry["human_text"],
@@ -368,7 +366,7 @@ def import_dataset(name="20newsgroups", full_dataset_=False, batch_size=64):
                     "source_id": entry.get("source_ID", "")
                 })
 
-            # machine
+            # Machine-generated sample
             if entry.get("machine_text"):
                 samples.append({
                     "text": entry["machine_text"],

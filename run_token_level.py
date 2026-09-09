@@ -1,10 +1,3 @@
-"""
-Textual Anomaly Detection - Token-level (RoBERTa/ModernBERT/Qwen/Mistral) embeddings.
-
-Modèles évalués : FLOCAT (flow matching), TCCM, RSRAE, DATE, CVDD.
-Le chargement / preprocessing / contamination (TAC) passe désormais par
-data_loading.py au lieu de fichiers locaux pré-calculés.
-"""
 
 import argparse
 import logging
@@ -99,7 +92,6 @@ def main(args):
             token_model, tokenizer, train_inlier[text_column], device,
             batch_size=64, max_length=args.seq_len, model_type=cfg["model_type"],
         )
-        print(X_inlier.shape)
 
         X_anom_for_train = None
         if args.nu_contamination > 0:
@@ -127,8 +119,7 @@ def main(args):
             )
             X_test = torch.cat([X_test_inlier, X_test_anomaly])
             attentions_test_mask = torch.cat([mask_test_inlier, mask_test_anomaly])
-            print(X_test.shape)
-
+            
             # ---------------- RSRAE ----------------
             if args.rsrae:
                 rsrae_args = {
@@ -244,24 +235,3 @@ def main(args):
 
 if __name__ == "__main__":
     main(parse_args())
-
-# python3 run_token_level.py \
-#     --dataset_name "reuters" \
-#     --inlier_topic "acq" \
-#     --type_tac "ruff" \
-#     --nu 0.1 \
-#     --type_emb "roberta" \
-#     --seq_len 128 \
-#     --nb_runs 5 \
-#     --flocat --tccm --rsrae --date --cvdd
-
-
-# python3 run_token_level.py \
-#     --dataset_name "reuters" \
-#     --inlier_topic "acq" \
-#     --type_tac "ruff" \
-#     --nu 0.1 \
-#     --type_emb "roberta" \
-#     --seq_len 64 \
-#     --nb_runs 2 \
-#     --tccm

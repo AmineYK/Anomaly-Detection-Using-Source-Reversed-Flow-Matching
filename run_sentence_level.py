@@ -1,11 +1,3 @@
-"""
-Textual Anomaly Detection - Sentence-level (SentenceBERT/mpnet/e5...) embeddings.
-
-Modèles évalués : FLOCAT (flow matching), RSRAE, TCCM, FATE, LLM-based.
-Le chargement / preprocessing / contamination (TAC) passe désormais par
-data_loading.py au lieu de fichiers locaux pré-calculés.
-"""
-
 import argparse
 import logging
 import time
@@ -14,7 +6,6 @@ import numpy as np
 import torch
 from torch import Tensor
 import torch.nn as nn
-from datasets import concatenate_datasets
 
 import data_loading as dl
 import Data.embedding_encoder as embedding_encoder
@@ -96,11 +87,7 @@ def main(args):
 
         X_inlier = Tensor(train_inlier[args.embedding_name]).to(device)
         X_anom_for_train = Tensor(train_anomaly[args.embedding_name]).to(device) if args.nu > 0 else None
-        print(X_inlier.shape)
 
-        # FATE a besoin de son propre jeu d'anomalies "texte" (type_tac dédié).
-        # NOTE: si tu veux garder le comportement d'origine (fichier séparé,
-        # indépendant de --nu), ajuste ici le nu passé à apply_tac.
         train_anomaly_fate = None
         if args.fate:
             _, train_anomaly_fate = dl.apply_tac(
@@ -121,7 +108,6 @@ def main(args):
                 Tensor(test_inlier[args.embedding_name]),
                 Tensor(test_anomaly[args.embedding_name]),
             ]).to(device)
-            print(X_test.shape)
 
             # ---------------- RSRAE ----------------
             if args.rsrae:
@@ -240,14 +226,3 @@ if __name__ == "__main__":
 #     --embedding_name "mpnet_embedding" \
 #     --nb_runs 5 \
 #     --flocat --rsrae --tccm --fate --llm --llm_name "..."
-
-
-# python3 run_sentence_level.py \
-#     --dataset_name "reuters" \
-#     --inlier_topic "acq" \
-#     --type_tac "ruff" \
-#     --nu 0.1 \
-#     --model_name "all-mpnet-base-v2" \
-#     --embedding_name "mpnet_embedding" \
-#     --nb_runs 2 \
-#     --tccm

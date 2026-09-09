@@ -1,9 +1,3 @@
-"""
-Chargement, préprocessing et contamination (TAC) des datasets.
-Remplace le chargement local par le pipeline utils/tac fourni.
-Ce module est importé par run_sentence_level.py et run_token_level.py.
-"""
-
 import logging
 import torch
 
@@ -92,7 +86,7 @@ def preprocess_dataset(dataset_name, train_dataset, test_dataset):
 
 
 def apply_tac(dataset, dataset_name, inlier_topic, type_tac, nu):
-    """Textual Anomaly Contamination : renvoie (inlier_split, anomaly_split)."""
+    """Textual Anomaly Contamination: returns (inlier_split, anomaly_split)."""
     logger.info(
         f"Applying TAC | dataset={dataset_name} | topic={inlier_topic} "
         f"| type_tac={type_tac} | nu={nu}"
@@ -109,9 +103,9 @@ def apply_tac(dataset, dataset_name, inlier_topic, type_tac, nu):
 
 def build_labeled_test_set(test_inlier, test_anomaly):
     """
-    Concatène inlier/anomaly de test et fabrique le vecteur de labels y_test
-    (0 = inlier, 1 = anomalie). Remplace la colonne 'anomaly_class' qui était
-    déjà présente dans les anciens fichiers pré-construits.
+    Concatenates test inliers/anomalies and creates the y_test label vector
+    (0 = inlier, 1 = anomaly). Replaces the 'anomaly_class' column that was
+    already present in the previously pre-built files.
     """
     from datasets import concatenate_datasets
     import numpy as np

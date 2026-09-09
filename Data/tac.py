@@ -1,6 +1,8 @@
 from datasets import concatenate_datasets
 import numpy as np
 
+
+# Add a constant "anomaly_class" column (0 = inlier, 1 = anomaly) to a dataset
 def _add_anomaly_column(dataset, value):
     return dataset.map(
         lambda x: {"anomaly_class": value},
@@ -9,15 +11,18 @@ def _add_anomaly_column(dataset, value):
     )
 
 
+# Compute the number of anomaly samples needed to reach the target anomaly rate
 def _compute_n_anomalies(n_inliers, anomaly_rate):
     return int((anomaly_rate * n_inliers) / (1 - anomaly_rate))
 
 
+# Randomly sample n_samples rows (with replacement) from a dataset
 def _sample_dataset(dataset, n_samples):
     indices = np.random.randint(0, dataset.num_rows, n_samples)
     return dataset.select(indices)
 
 
+# Build the training split: keep all inliers and sample a matching number of anomalies
 def _train_split(inlier_dataset, anomaly_dataset, anomaly_rate):
     n_anomalies = _compute_n_anomalies(
         inlier_dataset.num_rows,
@@ -32,6 +37,7 @@ def _train_split(inlier_dataset, anomaly_dataset, anomaly_rate):
     return inlier_dataset, anomaly_dataset
 
 
+# Build the test split: replace part of the inliers with anomalies to reach the target rate
 def _test_split(inlier_dataset, anomaly_dataset, anomaly_rate):
     n_inliers = inlier_dataset.num_rows
     n_replace = int(n_inliers * anomaly_rate)
@@ -53,11 +59,13 @@ def _test_split(inlier_dataset, anomaly_dataset, anomaly_rate):
     inlier_dataset = _add_anomaly_column(inlier_dataset, 0)
     anomaly_dataset = _add_anomaly_column(anomaly_dataset, 1)
 
+    # Merge inliers and anomalies into a single shuffled dataset
     return concatenate_datasets(
         [inlier_dataset, anomaly_dataset]
     ).shuffle(seed=42)
 
 
+# Dispatch to the train or test split builder depending on is_trainset
 def _finalize_split(
     inlier_dataset,
     anomaly_dataset,
@@ -78,6 +86,7 @@ def _finalize_split(
     )
 
 
+# Entry point: route to the correct dataset-specific contamination handler
 def textual_anomaly_contamination(
     dataset,
     dataset_name,
@@ -123,6 +132,7 @@ def textual_anomaly_contamination_binary(
 ):
     """Create inlier and anomaly splits for binary datasets."""
 
+    # Determine which label is considered inlier vs anomaly based on dataset and topic
     if dataset_name in ("sst2", "imdb"):
         if inlier_topic == "positive":
             inlier_label = 1
@@ -164,6 +174,7 @@ def textual_anomaly_contamination_dbpedia14(
     if type_tac != "pantin":
         raise ValueError("TAC not available")
 
+    # Mapping of DBpedia14 level-1 category names to their label ids
     level_1_mapping = {
         "Company": 0,
         "Educational Institution": 1,
@@ -189,6 +200,7 @@ def textual_anomaly_contamination_dbpedia14(
     inlier_indices = []
     anomaly_indices = []
 
+    # Split row indices into inliers and anomalies based on the label
     for i, label in enumerate(dataset["label"]):
         if label == inlier_label:
             inlier_indices.append(i)
@@ -219,6 +231,7 @@ def textual_anomaly_contamination_m4(
     inlier_indices = []
     anomaly_indices = []
 
+    # Keep only samples matching the target domain, split by machine/human label
     for i, sample in enumerate(dataset):
         domain = sample["inlier_topic"]
         label = sample["label"]
@@ -248,6 +261,7 @@ def textual_anomaly_contamination_20newsgroups(
     is_trainset=True,
 ):
     if type_tac == "ruff":
+        # Grouping of 20newsgroups labels used by the "ruff" scheme
         groups = {
             "computer": [
                 "comp.graphics",
@@ -282,6 +296,7 @@ def textual_anomaly_contamination_20newsgroups(
         }
 
     elif type_tac == "pantin":
+        # Grouping of 20newsgroups labels used by the "pantin" scheme
         groups = {
             "computer": [
                 "comp.graphics",
@@ -320,6 +335,7 @@ def textual_anomaly_contamination_20newsgroups(
     else:
         raise ValueError("TAC not available.")
 
+    # Reverse mapping from individual label to its parent group
     topic_map = {
         label: group
         for group, labels in groups.items()
@@ -336,6 +352,7 @@ def textual_anomaly_contamination_20newsgroups(
     )
 
     if inlier_topic in groups:
+        # inlier_topic is a whole group: use all its labels as inliers
         inlier_subtopics = groups[inlier_topic]
         anomaly_subtopics = [
             label
@@ -344,6 +361,7 @@ def textual_anomaly_contamination_20newsgroups(
             for label in labels
         ]
     else:
+        # inlier_topic is a single label: find which group it belongs to
         group_found = None
 
         for group_name, labels in groups.items():
@@ -391,12 +409,14 @@ def textual_anomaly_contamination_reuters(
     anomaly_rate=0.1,
     is_trainset=True,
 ):
+    # Keep only samples with exactly one topic label
     dataset = dataset.filter(
         lambda x: len(x["topics"]) == 1
     )
 
     if type_tac == "ruff":
         if is_trainset:
+            # Restrict to topics with at least 100 occurrences
             values, counts = np.unique(
                 dataset[:]["topics"],
                 return_counts=True,
@@ -424,6 +444,7 @@ def textual_anomaly_contamination_reuters(
         )
 
     if type_tac == "pantin":
+        # Grouping of Reuters topics into broader parent categories
         parent_topics = {
             "commodities": [
                 "acq",
@@ -494,6 +515,7 @@ def textual_anomaly_contamination_reuters(
             ],
         }
 
+        # Reverse mapping from individual topic to its parent category
         topic_map = {
             topic: parent
             for parent, topics in parent_topics.items()
@@ -540,6 +562,7 @@ def textual_anomaly_contamination_wos(
     if type_tac != "pantin":
         raise ValueError("TAC not available")
 
+    # Mapping of Web of Science level-1 category names to their label ids
     mapping = {
         "Computer_Science": 0,
         "Electrical_Engineering": 1,
@@ -581,6 +604,7 @@ def textual_anomaly_contamination_agnews(
     if type_tac != "fate":
         raise ValueError("TAC not available")
 
+    # Mapping of AG News category names to their label ids
     mapping = {
         "World": 0,
         "Sports": 1,
