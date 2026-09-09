@@ -6,7 +6,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModel, AutoTokenizer
 
-import Modelisation.Evaluation.evaluation as ev
+import evaluation as ev
 from Modelisation.Baselines.baseline import BaselineModel
 
 

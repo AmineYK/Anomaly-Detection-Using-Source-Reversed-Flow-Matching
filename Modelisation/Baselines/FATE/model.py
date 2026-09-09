@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, Sampler, SequentialSampler, TensorDatas
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-import Modelisation.Evaluation.evaluation as ev
+import evaluation as ev
 from Modelisation.Baselines.baseline import BaselineModel
 
 

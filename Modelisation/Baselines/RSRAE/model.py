@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import Modelisation.Evaluation.evaluation as ev
+import evaluation as ev
 from Modelisation.Baselines.baseline import BaselineModel
 
 

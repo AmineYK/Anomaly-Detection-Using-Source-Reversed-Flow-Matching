@@ -7,11 +7,11 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 
-import data_loading as dl
+import load_data as dl
 import Data.embedding_encoder as embedding_encoder
 from Modelisation.Baselines.RSRAE.model import RSRAE
 from Modelisation.Baselines.TCCM.model import TCCM
-from Modelisation.Flocat.flocat import flocat, flocatTrainer
+from flocat import flocat, flocatTrainer
 from Modelisation.Baselines.FATE.model import FATE
 from Modelisation.Baselines.LLM.model import LLMAnomalyDetector
 
@@ -217,7 +217,7 @@ def main(args):
 if __name__ == "__main__":
     main(parse_args())
 
-# python3 run_sentence_level.py \
+# python3 main_sentence_level.py \
 #     --dataset_name "reuters" \
 #     --inlier_topic "acq" \
 #     --type_tac "ruff" \

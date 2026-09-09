@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-import Modelisation.Evaluation.evaluation as ev
+import evaluation as ev
 from Modelisation.Baselines.baseline import BaselineModel
 
 

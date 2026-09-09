@@ -6,7 +6,7 @@ from torch.optim import AdamW
 import numpy as np
 import time
 from torch.utils.data import TensorDataset, DataLoader
-import Modelisation.Evaluation.evaluation as ev
+import evaluation as ev
 
 
 class TimestepEmbedder(nn.Module):

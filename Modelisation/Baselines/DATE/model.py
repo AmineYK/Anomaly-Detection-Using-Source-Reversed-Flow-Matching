@@ -12,7 +12,7 @@ from transformers import (
     RobertaTokenizerFast,
 )
 
-import Modelisation.Evaluation.evaluation as ev
+import evaluation as ev
 from Modelisation.Baselines.DATE.utils import (
     apply_mask_safe,
     corrupt_input_random,
