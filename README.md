@@ -1,4 +1,4 @@
-> Paper published to EMNLP 2026.
+> Paper published at EMNLP 2026.
 
 ## Overview
 
