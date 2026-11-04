@@ -60,15 +60,15 @@ See the paper for full results.
 ## Citation
 
 ```bibtex 
-@inproceedings{khodja-etal-2026-anomaly,
+@inproceedings{youcef-khodja-etal-2026-anomaly,
     title = "Anomaly Detection using Source-Reversed Flow Matching",
-    author = {Khodja, Amine Youcef  and
-      Pantin, Jeremie  and
+    author = {Youcef Khodja, Amine  and
+      Pantin, J{\'e}remie  and
       Dias, Ga{\"e}l  and
       Maurel, Fabrice},
     editor = "Lee, Hung-Yi  and
       Dev, Sunipa  and
-      Li, Jessy  and
+      Li, Junyi Jessy  and
       Elliott, Desmond",
     booktitle = "Proceedings of the 2026 Conference on Empirical Methods in Natural Language Processing",
     month = oct,
