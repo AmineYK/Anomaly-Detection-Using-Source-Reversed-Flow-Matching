@@ -1,4 +1,5 @@
 > Paper published at EMNLP 2026.
+> https://aclanthology.org/2026.emnlp-main.2322.pdf
 
 ## Overview
 
